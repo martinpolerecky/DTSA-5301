@@ -1,0 +1,107 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+ 
+```{r}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggplot2)
+library(tidyverse)
+library(lubridate)
+
+```
+
+```{r}
+source <- "https://data.cityofnewyork.us/api/views/833y-fsy8/rows.csv?accessType=DOWNLOAD"
+NYPD <- read.csv(source)
+```
+
+```{r}
+# Data Cleaning
+clean <- NYPD %>%
+  select(c("OCCUR_DATE","OCCUR_TIME","BORO",
+           "STATISTICAL_MURDER_FLAG","VIC_AGE_GROUP","VIC_RACE")) %>%
+  mutate(OCCUR_DATE = mdy(OCCUR_DATE),
+         OCCUR_TIME = hms(OCCUR_TIME),
+         STATISTICAL_MURDER_FLAG = as.logical(STATISTICAL_MURDER_FLAG),
+         Shootings = 1,
+         Year = year(OCCUR_DATE))
+  colnames(clean)[3] = 'Borough'
+  colnames(clean)[6] = 'Age'
+```
+
+```{r}
+NYPD_year <- clean %>%
+  group_by(Year,Shootings) %>%
+  summarize(Shootings = sum(Shootings),
+            STATISTICAL_MURDER_FLAG = sum(STATISTICAL_MURDER_FLAG)) %>%
+  select(Year,Shootings,STATISTICAL_MURDER_FLAG) %>%
+  ungroup()
+
+
+NYPD_year %>%
+  ggplot(aes(x = Year, y = Shootings)) +
+  geom_line() +
+  geom_point(color="blue") +
+  scale_x_discrete(limits = c(2006:2021)) +
+  labs(
+    title = "NYPD shooting incidents by year",
+    x = "Years",
+    y = "Number of Shootings")
+```
+
+
+```{r}
+NYPD_time_hour <- clean %>%
+  mutate(Hour = hour(OCCUR_TIME)) %>%
+  group_by(Hour,Shootings) %>%
+  summarize(Shootings = sum(Shootings),
+            STATISTICAL_MURDER_FLAG = sum(STATISTICAL_MURDER_FLAG)) %>%
+  mutate(Hour2 = Hour^2) %>%
+  select(Hour,Shootings,STATISTICAL_MURDER_FLAG, Hour2)
+
+NYPD_time_hour_model <- lm(data = NYPD_time_hour, Shootings ~ Hour + Hour2)
+summary(NYPD_time_hour_model)
+NYPD_time_hour %>%
+  ggplot(aes(x = Hour, y = Shootings)) +
+  geom_point() +
+  stat_smooth(method = "lm", formula = y ~ x + I(x^2), size = 1) +
+  labs(title = "NYPD shootings by time of day per hour",
+       x = "Hours",
+       y = "Number of shootings")
+```
+```{r}
+# Data Aggregation
+agg_data <- clean %>%
+  group_by(Borough) %>%
+  summarize(Shootings = sum(Shootings)) %>%
+  arrange(desc(Shootings))  # Arrange the data by the number of shootings in descending order
+
+# Data Visualization
+ggplot(agg_data, aes(x = factor(Borough, levels = Borough), y = Shootings, fill = Borough)) +
+  geom_bar(stat = "identity") +
+  labs(title = "Shootings incidents by borough",
+       x = '',
+       y = "Number of Shootings") +
+  scale_x_discrete(labels = function(x) gsub(" ", "\n", x))
+
+```
+
+
+```{r}
+# Data Aggregation
+by_age <- clean %>%
+  group_by(Age) %>%
+  summarize(Shootings = sum(Shootings)) %>%
+  filter(Age != 1022) %>%
+  arrange(desc(Shootings))  # Arrange the data by the number of shootings in descending order
+
+# Data Visualization
+ggplot(by_age, aes(x = factor(Age, levels = Age), y = Shootings, fill = Age)) +
+  geom_bar(stat = "identity") +
+  labs(title = "Shootings incidents by age group of victim",
+       x = 'Age group of victim',
+       y = "Number of Shootings") +
+  scale_x_discrete(labels = function(x) gsub(" ", "\n", x))
+```
